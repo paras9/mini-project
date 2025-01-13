@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSV Uploader</title>
+    <script>
+        let currentPage = 1;
+        let selectedDeviceType = "";
+
+        async function fetchEntries(page = 1, deviceType = "") {
+            try {
+                const queryParams = new URLSearchParams({ page, deviceType });
+                const response = await fetch(`/entries?${queryParams.toString()}`);
+                if (!response.ok) {
+                    throw new Error(`Error fetching entries: ${response.statusText}`);
+                }
+                const data = await response.json();
+                displayEntries(data);
+                currentPage = page;
+            } catch (error) {
+                console.error(error);
+                alert("Failed to fetch entries.");
+            }
+        }
+
+        function displayEntries(entries) {
+            const tableBody = document.getElementById('entriesTableBody');
+            tableBody.innerHTML = '';
+
+            if (entries.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="11">No entries found</td></tr>';
+                return;
+            }
+
+            entries.forEach(entry => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${entry.ID}</td>
+                    <td>${entry.DeviceName}</td>
+                    <td>${entry.DeviceType}</td>
+                    <td>${entry.Brand}</td>
+                    <td>${entry.Model}</td>
+                    <td>${entry.OS}</td>
+                    <td>${entry.OSVersion}</td>
+                    <td>${entry.PurchaseDate}</td>
+                    <td>${entry.WarrantyEnd}</td>
+                    <td>${entry.Status}</td>
+                    <td>${entry.Price}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function nextPage() {
+            fetchEntries(currentPage + 1, selectedDeviceType);
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                fetchEntries(currentPage - 1, selectedDeviceType);
+            }
+        }
+
+        function filterByDeviceType() {
+            const deviceTypeSelect = document.getElementById('deviceType');
+            selectedDeviceType = deviceTypeSelect.value;
+            fetchEntries(1, selectedDeviceType);
+        }
+
+        function showTable() {
+            document.getElementById('tableSection').style.display = 'block';
+            fetchEntries();
+        }
+    </script>
+</head>
+<body>
+    <h1>CSV Uploader</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" />
+        <button type="submit">Upload</button>
+    </form>
+
+    <button onclick="showTable()">View Table</button>
+
+    <div id="tableSection" style="display:none;">
+        <h2>Database Entries</h2>
+        <label for="deviceType">Filter by Device Type:</label>
+        <select id="deviceType" onchange="filterByDeviceType()">
+            <option value="">All</option>
+            <option value="Accessory">"Accessory"</option>
+            <option value="Electronics">"Electronics"</option>
+            <option value="Peripheral">"Peripheral"</option>
+
+        </select>
+        <button onclick="previousPage()">Previous</button>
+        <button onclick="nextPage()">Next</button>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Device Name</th>
+                    <th>Device Type</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>OS</th>
+                    <th>OS Version</th>
+                    <th>Purchase Date</th>
+                    <th>Warranty End</th>
+                    <th>Status</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody id="entriesTableBody">
+                <!-- Rows will be dynamically added here -->
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
