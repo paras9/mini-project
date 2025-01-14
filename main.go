@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -188,9 +189,13 @@ func parseInt(s string) int {
 	return v
 }
 
-func getPaginatedEntriesHandler(w http.ResponseWriter, r *http.Request) {
+func getFilteredEntriesHandler(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	deviceType := r.URL.Query().Get("deviceType")
+	deviceName := r.URL.Query().Get("deviceName")
+	os := r.URL.Query().Get("os")
+	brand := r.URL.Query().Get("brand")
+	idRange := r.URL.Query().Get("idRange")
 
 	if page < 1 {
 		page = 1
@@ -204,6 +209,23 @@ func getPaginatedEntriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	if deviceType != "" {
 		query = query.Where("device_type = ?", deviceType)
+	}
+	if deviceName != "" {
+		query = query.Where("device_name = ?", deviceName)
+	}
+	if os != "" {
+		query = query.Where("os = ?", os)
+	}
+	if brand != "" {
+		query = query.Where("brand = ?", brand)
+	}
+	if idRange != "" {
+		ids := strings.Split(idRange, "-")
+		if len(ids) == 2 {
+			startID, _ := strconv.Atoi(ids[0])
+			endID, _ := strconv.Atoi(ids[1])
+			query = query.Where("id BETWEEN ? AND ?", startID, endID)
+		}
 	}
 
 	result := query.Find(&devices)
@@ -224,7 +246,7 @@ func main() {
 	initDB()
 
 	http.HandleFunc("/upload", uploadHandler)
-	http.HandleFunc("/entries", getPaginatedEntriesHandler)
+	http.HandleFunc("/entries", getFilteredEntriesHandler)
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	fmt.Println("Server started at http://localhost:8080")

@@ -1,118 +1,193 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>CSV Uploader</title>
-    <script>
-        let currentPage = 1;
-        let selectedDeviceType = "";
-
-        async function fetchEntries(page = 1, deviceType = "") {
-            try {
-                const queryParams = new URLSearchParams({ page, deviceType });
-                const response = await fetch(`/entries?${queryParams.toString()}`);
-                if (!response.ok) {
-                    throw new Error(`Error fetching entries: ${response.statusText}`);
-                }
-                const data = await response.json();
-                displayEntries(data);
-                currentPage = page;
-            } catch (error) {
-                console.error(error);
-                alert("Failed to fetch entries.");
-            }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
         }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select, button {
+            padding: 10px;
+            width: 100%;
+            max-width: 300px;
+        }
+        button {
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <h1>Device Management</h1>
 
-        function displayEntries(entries) {
-            const tableBody = document.getElementById('entriesTableBody');
-            tableBody.innerHTML = '';
+    <!-- File Upload Section -->
+    <div class="form-group">
+        <label for="fileUpload">Upload CSV File:</label>
+        <input type="file" id="fileUpload">
+        <button onclick="uploadFile()">Upload</button>
+    </div>
 
-            if (entries.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="11">No entries found</td></tr>';
+    <!-- Filter Section -->
+    <h2>Filter Entries</h2>
+    <div class="form-group">
+        <label for="deviceType">Device Type:</label>
+        <select id="deviceType">
+            <option value="">All</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Accessory">Accessory</option>
+            <option value="Peripheral">Peripheral</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="deviceName">Device Name:</label>
+        <input type="text" id="deviceName" placeholder="Enter Device Name">
+    </div>
+    <div class="form-group">
+        <label for="os">Operating System:</label>
+        <select id="os">
+            <option value="">All</option>
+            <option value="Android">Android</option>
+            <option value="ChromeOS">ChromeOS</option>
+            <option value="iOS">iOS</option>
+            <option value="Linux">Linux</option>
+            <option value="macOS">macOS</option>
+            <option value="Windows">Windows</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="brand">Brand:</label>
+        <select id="brand">
+            <option value="">All</option>
+            <option value="Acer">Acer</option>
+            <option value="Apple">Apple</option>
+            <option value="Asus">Asus</option>
+            <option value="Dell">Dell</option>
+            <option value="HP">HP</option>
+            <option value="Lenovo">Lenovo</option>
+            <option value="LG">LG</option>
+            <option value="Microsoft">Microsoft</option>
+            <option value="Samsung">Samsung</option>
+            <option value="Sony">Sony</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="idRange">ID Range:</label>
+        <input type="text" id="idRange" placeholder="e.g., 50-100">
+    </div>
+    <div class="form-group">
+        <button onclick="fetchEntries()">Fetch Entries</button>
+    </div>
+
+    <!-- Results Section -->
+    <h2>Entries</h2>
+    <table id="entriesTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Device Name</th>
+                <th>Device Type</th>
+                <th>Brand</th>
+                <th>Model</th>
+                <th>OS</th>
+                <th>OS Version</th>
+                <th>Purchase Date</th>
+                <th>Warranty End</th>
+                <th>Status</th>
+                <th>Price</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        function uploadFile() {
+            const fileInput = document.getElementById("fileUpload");
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert("Please select a file to upload.");
                 return;
             }
 
-            entries.forEach(entry => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${entry.ID}</td>
-                    <td>${entry.DeviceName}</td>
-                    <td>${entry.DeviceType}</td>
-                    <td>${entry.Brand}</td>
-                    <td>${entry.Model}</td>
-                    <td>${entry.OS}</td>
-                    <td>${entry.OSVersion}</td>
-                    <td>${entry.PurchaseDate}</td>
-                    <td>${entry.WarrantyEnd}</td>
-                    <td>${entry.Status}</td>
-                    <td>${entry.Price}</td>
-                `;
-                tableBody.appendChild(row);
+            const formData = new FormData();
+            formData.append("file", file);
+
+            fetch("/upload", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert("File uploaded successfully.");
+                } else {
+                    alert("Failed to upload file.");
+                }
+            })
+            .catch(error => {
+                console.error("Error uploading file:", error);
+                alert("An error occurred while uploading the file.");
             });
         }
 
-        function nextPage() {
-            fetchEntries(currentPage + 1, selectedDeviceType);
-        }
+        function fetchEntries() {
+            const deviceType = document.getElementById("deviceType").value;
+            const deviceName = document.getElementById("deviceName").value;
+            const os = document.getElementById("os").value;
+            const brand = document.getElementById("brand").value;
+            const idRange = document.getElementById("idRange").value;
 
-        function previousPage() {
-            if (currentPage > 1) {
-                fetchEntries(currentPage - 1, selectedDeviceType);
-            }
-        }
+            const params = new URLSearchParams();
+            if (deviceType) params.append("deviceType", deviceType);
+            if (deviceName) params.append("deviceName", deviceName);
+            if (os) params.append("os", os);
+            if (brand) params.append("brand", brand);
+            if (idRange) params.append("idRange", idRange);
 
-        function filterByDeviceType() {
-            const deviceTypeSelect = document.getElementById('deviceType');
-            selectedDeviceType = deviceTypeSelect.value;
-            fetchEntries(1, selectedDeviceType);
-        }
+            fetch(`/entries?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById("entriesTable").querySelector("tbody");
+                    tableBody.innerHTML = "";
 
-        function showTable() {
-            document.getElementById('tableSection').style.display = 'block';
-            fetchEntries();
+                    data.forEach(entry => {
+                        const row = document.createElement("tr");
+
+                        Object.values(entry).forEach(value => {
+                            const cell = document.createElement("td");
+                            cell.textContent = value;
+                            row.appendChild(cell);
+                        });
+
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error("Error fetching entries:", error);
+                    alert("An error occurred while fetching entries.");
+                });
         }
     </script>
-</head>
-<body>
-    <h1>CSV Uploader</h1>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" />
-        <button type="submit">Upload</button>
-    </form>
-
-    <button onclick="showTable()">View Table</button>
-
-    <div id="tableSection" style="display:none;">
-        <h2>Database Entries</h2>
-        <label for="deviceType">Filter by Device Type:</label>
-        <select id="deviceType" onchange="filterByDeviceType()">
-            <option value="">All</option>
-            <option value="Accessory">"Accessory"</option>
-            <option value="Electronics">"Electronics"</option>
-            <option value="Peripheral">"Peripheral"</option>
-
-        </select>
-        <button onclick="previousPage()">Previous</button>
-        <button onclick="nextPage()">Next</button>
-        <table border="1">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Device Name</th>
-                    <th>Device Type</th>
-                    <th>Brand</th>
-                    <th>Model</th>
-                    <th>OS</th>
-                    <th>OS Version</th>
-                    <th>Purchase Date</th>
-                    <th>Warranty End</th>
-                    <th>Status</th>
-                    <th>Price</th>
-                </tr>
-            </thead>
-            <tbody id="entriesTableBody">
-                <!-- Rows will be dynamically added here -->
-            </tbody>
-        </table>
-    </div>
 </body>
 </html>
