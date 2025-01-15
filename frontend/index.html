@@ -47,6 +47,7 @@
         <label for="fileUpload">Upload CSV File:</label>
         <input type="file" id="fileUpload">
         <button onclick="uploadFile()">Upload</button>
+        <p id="uploadStatus" style="color:blue;"></p>
     </div>
 
     <!-- Filter Section -->
@@ -97,7 +98,7 @@
         <input type="text" id="idRange" placeholder="e.g., 50-100">
     </div>
     <div class="form-group">
-        <button onclick="fetchEntries()">Fetch Entries</button>
+        <button onclick="fetchEntries(1)">Fetch Entries</button>
     </div>
 
     <!-- Results Section -->
@@ -120,19 +121,30 @@
         </thead>
         <tbody></tbody>
     </table>
+    <div>
+        <button onclick="previousPage()">Previous</button>
+        <button onclick="nextPage()">Next</button>
+    </div>
 
     <script>
+        let currentPage = 1;
+
         function uploadFile() {
             const fileInput = document.getElementById("fileUpload");
             const file = fileInput.files[0];
+            const statusMessage = document.getElementById("uploadStatus");
 
             if (!file) {
-                alert("Please select a file to upload.");
+                statusMessage.textContent = "Please select a file to upload.";
+                statusMessage.style.color = "red";
                 return;
             }
 
             const formData = new FormData();
             formData.append("file", file);
+
+            statusMessage.textContent = "Uploading file...";
+            statusMessage.style.color = "blue";
 
             fetch("/upload", {
                 method: "POST",
@@ -140,25 +152,28 @@
             })
             .then(response => {
                 if (response.ok) {
-                    alert("File uploaded successfully.");
+                    statusMessage.textContent = "File uploaded successfully.";
+                    statusMessage.style.color = "green";
                 } else {
-                    alert("Failed to upload file.");
+                    statusMessage.textContent = "Failed to upload file.";
+                    statusMessage.style.color = "red";
                 }
             })
             .catch(error => {
                 console.error("Error uploading file:", error);
-                alert("An error occurred while uploading the file.");
+                statusMessage.textContent = "An error occurred while uploading the file.";
+                statusMessage.style.color = "red";
             });
         }
 
-        function fetchEntries() {
+        function fetchEntries(page = 1) {
             const deviceType = document.getElementById("deviceType").value;
             const deviceName = document.getElementById("deviceName").value;
             const os = document.getElementById("os").value;
             const brand = document.getElementById("brand").value;
             const idRange = document.getElementById("idRange").value;
 
-            const params = new URLSearchParams();
+            const params = new URLSearchParams({ page });
             if (deviceType) params.append("deviceType", deviceType);
             if (deviceName) params.append("deviceName", deviceName);
             if (os) params.append("os", os);
@@ -171,6 +186,16 @@
                     const tableBody = document.getElementById("entriesTable").querySelector("tbody");
                     tableBody.innerHTML = "";
 
+                    if (data.length === 0) {
+                        const row = document.createElement("tr");
+                        const cell = document.createElement("td");
+                        cell.colSpan = 11;
+                        cell.textContent = "No entries found.";
+                        row.appendChild(cell);
+                        tableBody.appendChild(row);
+                        return;
+                    }
+
                     data.forEach(entry => {
                         const row = document.createElement("tr");
 
@@ -182,11 +207,23 @@
 
                         tableBody.appendChild(row);
                     });
+
+                    currentPage = page;
                 })
                 .catch(error => {
                     console.error("Error fetching entries:", error);
                     alert("An error occurred while fetching entries.");
                 });
+        }
+
+        function nextPage() {
+            fetchEntries(currentPage + 1);
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                fetchEntries(currentPage - 1);
+            }
         }
     </script>
 </body>

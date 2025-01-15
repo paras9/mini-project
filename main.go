@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -31,10 +32,11 @@ type Device struct {
 	Price        float64
 }
 
-var db *gorm.DB
-var totalRows int
-var processedRows int
-var mutex sync.Mutex
+var (
+	db            *gorm.DB
+	totalRows     int64
+	processedRows int64
+)
 
 func initDB() {
 	var err error
@@ -99,15 +101,16 @@ func processFile(filePath string) {
 	defer file.Close()
 
 	reader := csv.NewReader(bufio.NewReader(file))
-	_, err = reader.Read()
+	_, err = reader.Read() // Skip header
 	if err != nil {
 		log.Fatalf("Failed to read CSV header: %v", err)
 	}
 
-	chunks := make(chan []string, 1000)
+	chunks := make(chan []string, 1000) // Buffered channel for efficiency
 	wg := sync.WaitGroup{}
+	numWorkers := 25 // Adjust based on available CPU cores
 
-	for i := 0; i < 50; i++ {
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go processChunk(chunks, &wg)
 	}
@@ -119,9 +122,10 @@ func processFile(filePath string) {
 				if err.Error() == "EOF" {
 					break
 				}
-				log.Fatalf("Failed to read record: %v", err)
+				log.Printf("Skipping record due to error: %v", err)
+				continue
 			}
-			totalRows++
+			atomic.AddInt64(&totalRows, 1)
 			chunks <- record
 		}
 		close(chunks)
@@ -135,7 +139,7 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var devices []Device
-	batchSize := 5000
+	batchSize := 1000
 
 	for record := range chunks {
 		price, _ := strconv.ParseFloat(record[10], 64)
@@ -157,7 +161,7 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 
 		if len(devices) >= batchSize {
 			insertBatch(devices)
-			devices = []Device{}
+			devices = devices[:0]
 		}
 	}
 
@@ -168,9 +172,7 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 
 func insertBatch(devices []Device) {
 	for retries := 3; retries > 0; retries-- {
-		mutex.Lock()
 		err := db.Create(&devices).Error
-		mutex.Unlock()
 		if err == nil {
 			break
 		}
@@ -178,10 +180,8 @@ func insertBatch(devices []Device) {
 		time.Sleep(2 * time.Second)
 	}
 
-	mutex.Lock()
-	processedRows += len(devices)
+	atomic.AddInt64(&processedRows, int64(len(devices)))
 	fmt.Printf("\rRows processed: %d/%d", processedRows, totalRows)
-	mutex.Unlock()
 }
 
 func parseInt(s string) int {
@@ -250,6 +250,5 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	fmt.Println("Server started at http://localhost:8080")
-
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

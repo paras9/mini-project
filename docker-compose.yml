@@ -39,6 +39,17 @@ services:
     networks:
       - app-network
 
+  test:
+    build:
+      context: .
+    container_name: go-test
+    command: ["go", "test", "-v"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
