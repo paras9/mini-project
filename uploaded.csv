@@ -1,0 +1,2 @@
+ID,DeviceName,DeviceType,Brand,Model,OS,OSVersion,PurchaseDate,WarrantyEnd,Status,Price
+1,Device1,Type1,Brand1,Model1,OS1,1.0,2022-01-01,2023-01-01,Active,100.0

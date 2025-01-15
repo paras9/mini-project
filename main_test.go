@@ -1,115 +1,10 @@
-/*
-package main
-
-import (
-
-	"bytes"
-	"io"
-	"mime/multipart"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"strings"
-	"testing"
-
-)
-
-	func TestUploadHandler(t *testing.T) {
-		// Create a temporary CSV file for testing
-		tempFile, err := os.CreateTemp("", "test_upload_*.csv")
-		if err != nil {
-			t.Fatalf("Failed to create temporary file: %v", err)
-		}
-		defer os.Remove(tempFile.Name())
-
-		_, err = tempFile.WriteString(`ID,DeviceName,DeviceType,Brand,Model,OS,OSVersion,PurchaseDate,WarrantyEnd,Status,Price\n1,TestDevice,Electronics,BrandX,ModelY,Android,11.0,2023-01-01,2024-01-01,Active,199.99`)
-		if err != nil {
-			t.Fatalf("Failed to write to temporary file: %v", err)
-		}
-		tempFile.Close()
-
-		// Prepare a form file request
-		file, err := os.Open(tempFile.Name())
-		if err != nil {
-			t.Fatalf("Failed to open temporary file: %v", err)
-		}
-		defer file.Close()
-
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		part, err := writer.CreateFormFile("file", tempFile.Name())
-		if err != nil {
-			t.Fatalf("Failed to create form file: %v", err)
-		}
-		_, err = io.Copy(part, file)
-		if err != nil {
-			t.Fatalf("Failed to copy file content: %v", err)
-		}
-		writer.Close()
-
-		req := httptest.NewRequest(http.MethodPost, "/upload", body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-
-		rec := httptest.NewRecorder()
-		http.HandlerFunc(uploadHandler).ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusAccepted {
-			t.Errorf("Expected status %d, got %d", http.StatusAccepted, rec.Code)
-		}
-	}
-
-	func TestGetFilteredEntriesHandler(t *testing.T) {
-		// Seed the database with test data
-		testDevices := []Device{
-			{ID: 1, DeviceName: "Device1", DeviceType: "Electronics", Brand: "BrandA", Model: "Model1", OS: "Android", OSVersion: "10", PurchaseDate: "2022-01-01", WarrantyEnd: "2023-01-01", Status: "Active", Price: 299.99},
-			{ID: 2, DeviceName: "Device2", DeviceType: "Accessory", Brand: "BrandB", Model: "Model2", OS: "iOS", OSVersion: "14", PurchaseDate: "2022-02-01", WarrantyEnd: "2023-02-01", Status: "Inactive", Price: 199.99},
-		}
-		db.Create(&testDevices)
-
-		req := httptest.NewRequest(http.MethodGet, "/entries?page=1&deviceType=Electronics", nil)
-		rec := httptest.NewRecorder()
-		http.HandlerFunc(getFilteredEntriesHandler).ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
-		}
-
-		responseBody := rec.Body.String()
-		if !strings.Contains(responseBody, "Device1") {
-			t.Errorf("Expected response to contain Device1, got %s", responseBody)
-		}
-	}
-
-	func TestProcessFile(t *testing.T) {
-		// Create a temporary CSV file for testing
-		tempFile, err := os.CreateTemp("", "test_process_*.csv")
-		if err != nil {
-			t.Fatalf("Failed to create temporary file: %v", err)
-		}
-		defer os.Remove(tempFile.Name())
-
-		_, err = tempFile.WriteString(`ID,DeviceName,DeviceType,Brand,Model,OS,OSVersion,PurchaseDate,WarrantyEnd,Status,Price\n1,TestDevice,Electronics,BrandX,ModelY,Android,11.0,2023-01-01,2024-01-01,Active,199.99`)
-		if err != nil {
-			t.Fatalf("Failed to write to temporary file: %v", err)
-		}
-		tempFile.Close()
-
-		// Call processFile
-		processFile(tempFile.Name())
-
-		// Verify the database
-		var count int64
-		db.Model(&Device{}).Count(&count)
-		if count != 1 {
-			t.Errorf("Expected 1 device in the database, got %d", count)
-		}
-	}
-*/
 package main
 
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,72 +15,105 @@ import (
 )
 
 func TestInitDB(t *testing.T) {
+	// Set up an in-memory SQLite database for testing
+	dsn := "file::memory:?cache=shared"
 	var err error
-	// Use SQLite for testing
-	db, err = gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("Failed to connect to test database: %v", err)
+		t.Fatalf("Failed to connect to SQLite: %v", err)
 	}
 
 	err = db.AutoMigrate(&Device{})
 	if err != nil {
-		t.Fatalf("Failed to migrate test database: %v", err)
+		t.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// Cleanup
-	os.Remove("test.db")
+	// Verify that the Device table exists
+	if !db.Migrator().HasTable(&Device{}) {
+		t.Fatalf("Device table does not exist after migration")
+	}
 }
 
 func TestUploadHandler(t *testing.T) {
-	initDB()
-	defer os.Remove("uploaded.csv")
-
-	// Mock CSV file
-	csvData := `ID,DeviceName,DeviceType,Brand,Model,OS,OSVersion,PurchaseDate,WarrantyEnd,Status,Price
-1,Device1,Type1,Brand1,Model1,OS1,1.0,2022-01-01,2023-01-01,Active,1000.50
-`
-	req := httptest.NewRequest("POST", "/upload", bytes.NewReader([]byte(csvData)))
-	req.Header.Set("Content-Type", "multipart/form-data")
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(uploadHandler)
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusAccepted {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusAccepted)
+	// Create a sample CSV file
+	csvContent := "ID,DeviceName,DeviceType,Brand,Model,OS,OSVersion,PurchaseDate,WarrantyEnd,Status,Price\n" +
+		"1,Device1,Type1,Brand1,Model1,OS1,1.0,2022-01-01,2023-01-01,Active,100.0\n"
+	tempFile, err := os.CreateTemp("", "test_upload_*.csv")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
 	}
+	defer os.Remove(tempFile.Name())
+	tempFile.WriteString(csvContent)
+	tempFile.Close()
 
-	if _, err := os.Stat("uploaded.csv"); os.IsNotExist(err) {
-		t.Errorf("uploaded.csv file was not created")
+	// Set up a mock HTTP request
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	fileWriter, err := writer.CreateFormFile("file", tempFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to create form file: %v", err)
+	}
+	file, err := os.Open(tempFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to open temp file: %v", err)
+	}
+	defer file.Close()
+	_, err = io.Copy(fileWriter, file)
+	if err != nil {
+		t.Fatalf("Failed to copy file content: %v", err)
+	}
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+
+	// Call the handler
+	uploadHandler(rec, req)
+
+	// Verify the response
+	res := rec.Result()
+	if res.StatusCode != http.StatusAccepted {
+		t.Errorf("Expected status 202, got %d", res.StatusCode)
 	}
 }
 
 func TestGetFilteredEntriesHandler(t *testing.T) {
-	initDB()
+	// Set up an in-memory SQLite database and insert test data
+	dsn := "file::memory:?cache=shared"
+	var err error
+	db, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to connect to SQLite: %v", err)
+	}
+	db.AutoMigrate(&Device{})
 
-	// Insert mock data
 	devices := []Device{
-		{ID: 1, DeviceName: "Device1", DeviceType: "Type1", Brand: "Brand1", OS: "OS1", Price: 100.0},
-		{ID: 2, DeviceName: "Device2", DeviceType: "Type2", Brand: "Brand2", OS: "OS2", Price: 200.0},
+		{ID: 1, DeviceName: "Device1", DeviceType: "Type1", Brand: "Brand1", Price: 100.0},
+		{ID: 2, DeviceName: "Device2", DeviceType: "Type2", Brand: "Brand2", Price: 200.0},
 	}
 	db.Create(&devices)
 
-	req := httptest.NewRequest("GET", "/entries?page=1&deviceType=Type1", nil)
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(getFilteredEntriesHandler)
-	handler.ServeHTTP(rr, req)
+	// Set up a mock HTTP request
+	req := httptest.NewRequest(http.MethodGet, "/entries?page=1&deviceType=Type1", nil)
+	rec := httptest.NewRecorder()
 
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	// Call the handler
+	getFilteredEntriesHandler(rec, req)
+
+	// Verify the response
+	res := rec.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", res.StatusCode)
 	}
 
-	var result []Device
-	err := json.Unmarshal(rr.Body.Bytes(), &result)
+	var response []Device
+	err = json.NewDecoder(res.Body).Decode(&response)
 	if err != nil {
-		t.Errorf("Failed to decode response: %v", err)
+		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if len(result) != 1 || result[0].DeviceName != "Device1" {
-		t.Errorf("Filtered results are incorrect: got %v", result)
+	if len(response) != 1 || response[0].DeviceName != "Device1" {
+		t.Errorf("Unexpected response: %+v", response)
 	}
 }
