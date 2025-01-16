@@ -36,15 +36,27 @@ var (
 	db            *gorm.DB
 	totalRows     int64
 	processedRows int64
+	mu            sync.Mutex
 )
 
 func initDB() {
 	var err error
 	dsn := "host=db user=postgres password=yourpassword dbname=devices port=5432 sslmode=disable"
+	maxRetries := 5
+	retryInterval := 3 * time.Second
 
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	for retries := 0; retries < maxRetries; retries++ {
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		if err == nil {
+			break
+		}
+		log.Printf("Failed to connect to database, retrying... (%d/%d)", retries+1, maxRetries)
+		time.Sleep(retryInterval)
+		retryInterval *= 3 // Exponential backoff
+	}
+
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to connect to database after %d retries: %v", maxRetries, err)
 	}
 
 	err = db.AutoMigrate(&Device{})
@@ -111,11 +123,13 @@ func processFile(filePath string) {
 	wg := sync.WaitGroup{}
 	numWorkers := 25 // Adjust based on available CPU cores
 
+	// Create a pool of workers for processing chunks
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go processChunk(chunks, &wg)
 	}
 
+	// Concurrently read the file and send chunks to workers
 	go func() {
 		for {
 			record, err := reader.Read()
@@ -140,7 +154,7 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var devices []Device
-	batchSize := 1000
+	batchSize := 500 // Reduce batch size to avoid overloading the database
 
 	for record := range chunks {
 		price, _ := strconv.ParseFloat(record[10], 64)
@@ -160,29 +174,37 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 
 		devices = append(devices, device)
 
+		// Insert batch when the batch size is reached
 		if len(devices) >= batchSize {
 			insertBatch(devices)
 			devices = devices[:0]
 		}
 	}
 
+	// Insert any remaining devices
 	if len(devices) > 0 {
 		insertBatch(devices)
 	}
 }
 
 func insertBatch(devices []Device) {
-	for retries := 3; retries > 0; retries-- {
+	maxRetries := 3
+	retryInterval := 2 * time.Second
+
+	for retries := 0; retries < maxRetries; retries++ {
 		err := db.Create(&devices).Error
 		if err == nil {
-			break
+			atomic.AddInt64(&processedRows, int64(len(devices)))
+			fmt.Printf("\rRows processed: %d/%d", processedRows, totalRows)
+			return
 		}
-		log.Printf("Failed to insert batch, retrying... (%d retries left)", retries-1)
-		time.Sleep(2 * time.Second)
+
+		log.Printf("Failed to insert batch, retrying... (%d/%d)", retries+1, maxRetries)
+		time.Sleep(retryInterval)
+		retryInterval *= 2 // Exponential backoff
 	}
 
-	atomic.AddInt64(&processedRows, int64(len(devices)))
-	fmt.Printf("\rRows processed: %d/%d", processedRows, totalRows)
+	log.Printf("Failed to insert batch after %d retries", maxRetries)
 }
 
 func parseInt(s string) int {
