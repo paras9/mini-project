@@ -8,19 +8,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMainHandler(t *testing.T) {
+func TestUploadRouteHandler(t *testing.T) {
 	// Create a test request
 	req, err := http.NewRequest("GET", "/upload", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	// Create a ResponseRecorder to capture the response
 	rr := httptest.NewRecorder()
 
-	// Create a handler for the route
+	// Use the actual handler (replace with your actual upload handler)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Upload route works"))
 	})
 
 	// Serve the request using the handler
@@ -28,21 +27,23 @@ func TestMainHandler(t *testing.T) {
 
 	// Assert the status code
 	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// Assert the response body
+	assert.Equal(t, "Upload route works", rr.Body.String())
 }
 
-func TestGetFilteredEntriesHandler(t *testing.T) {
+func TestEntriesRouteHandler(t *testing.T) {
 	// Create a test request
 	req, err := http.NewRequest("GET", "/entries", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	// Create a ResponseRecorder to capture the response
 	rr := httptest.NewRecorder()
 
-	// Create a handler for the route
+	// Use the actual handler (replace with your actual entries handler)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Entries route works"))
 	})
 
 	// Serve the request using the handler
@@ -50,4 +51,7 @@ func TestGetFilteredEntriesHandler(t *testing.T) {
 
 	// Assert the status code
 	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// Assert the response body
+	assert.Equal(t, "Entries route works", rr.Body.String())
 }

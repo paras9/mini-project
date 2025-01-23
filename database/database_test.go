@@ -1,47 +1,44 @@
-package database
+package database_test
 
 import (
-	"mini2/models"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"gorm.io/gorm"
+
+	"mini2/database"
 )
 
-// Mocking gorm.DB
-type MockDB struct {
-	mock.Mock
-}
-
-func (m *MockDB) DB() *gorm.DB {
-	args := m.Called()
-	return args.Get(0).(*gorm.DB)
+type TestModel struct {
+	ID   uint   `gorm:"primaryKey"`
+	Name string `gorm:"size:255"`
 }
 
 func TestInitDB(t *testing.T) {
-	// Mocking the database connection
-	mockDB := new(MockDB)
-	mockDB.On("DB").Return(&gorm.DB{})
+	dsn := "host=localhost user=postgres password=postgres dbname=testdb port=5432 sslmode=disable"
 
-	// Initialize the DB
-	InitDB("mock_dsn")
+	// Initialize the database
+	database.InitDB(dsn)
 
-	// Validate if the DB connection was initialized
-	assert.NotNil(t, DB, "DB should not be nil")
+	// Check if the DB instance is initialized
+	assert.NotNil(t, database.DB, "DB instance should not be nil")
 
-	// Validate that the mock method was called
-	mockDB.AssertExpectations(t)
+	// Verify connection settings
+	sqlDB, err := database.DB.DB()
+	assert.NoError(t, err, "Should not error while getting sql.DB")
+	assert.Equal(t, 200, sqlDB.Stats().MaxOpenConnections, "MaxOpenConns should be 200")
+	assert.Equal(t, 100, sqlDB.Stats().Idle, "MaxIdleConns should be 100")
 }
 
 func TestMigrate(t *testing.T) {
-	// Mocking DB auto-migration
-	mockDB := new(MockDB)
-	mockDB.On("DB").Return(&gorm.DB{})
+	dsn := "host=localhost user=postgres password=postgres dbname=testdb port=5432 sslmode=disable"
+	database.InitDB(dsn)
 
-	// Calling Migrate function
-	Migrate(&models.Device{})
+	// Migrate the TestModel
+	database.Migrate(&TestModel{})
 
-	// Assert migration was successful
-	mockDB.AssertExpectations(t)
+	// Verify migration by checking if the table exists
+	var exists bool
+	err := database.DB.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)", "test_models").Scan(&exists).Error
+	assert.NoError(t, err, "Should not error while checking table existence")
+	assert.True(t, exists, "Table 'test_models' should exist after migration")
 }
