@@ -15,9 +15,8 @@ func main() {
 	// Load environment variables
 	config.LoadConfig()
 
-	// Initialize logger
-	config.InitLogger()
-	logger := config.Logger
+	// Get logger instance
+	logger := config.GetLogger()
 
 	// Initialize database
 	database.InitDB(os.Getenv("DB_DSN"))

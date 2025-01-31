@@ -2,15 +2,18 @@ package handlers
 
 import (
 	"encoding/csv"
-	"log"
-	"os"
+	"fmt"
+	"io"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"mini2/config"
 	"mini2/database"
 	"mini2/models"
+
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -18,53 +21,67 @@ var (
 	processedRows int64
 )
 
-func ProcessFile(filePath string) {
-	start := time.Now()
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
-	}
+func ProcessFile(file io.ReadCloser) {
+	// Get the logger instance
+	logger := config.GetLogger()
+
 	defer file.Close()
 
+	start := time.Now()
 	reader := csv.NewReader(file)
-	_, err = reader.Read() // Skip header
+
+	// Read the header
+	_, err := reader.Read()
 	if err != nil {
-		log.Fatalf("Failed to read CSV header: %v", err)
+		logger.Fatalf("Failed to read CSV header: %v", err)
 	}
 
 	chunks := make(chan []string, 1000)
 	wg := sync.WaitGroup{}
-	numWorkers := 25
+	numWorkers := 20
 
+	// Start worker goroutines
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go processChunk(chunks, &wg)
+		go processChunk(chunks, &wg, logger)
 	}
 
+	// Read the CSV file and send records to chunks channel
 	go func() {
+		defer close(chunks)
 		for {
 			record, err := reader.Read()
-			if err != nil {
+			if err == io.EOF {
 				break
+			}
+			if err != nil {
+				logger.Printf("Error reading record: %v", err)
+				continue
 			}
 			atomic.AddInt64(&totalRows, 1)
 			chunks <- record
 		}
-		close(chunks)
 	}()
 
+	//ensures worker finish before counting
 	wg.Wait()
-	log.Printf("Processing completed in %v", time.Since(start))
+	logger.Infof("Processing completed in %v", time.Since(start))
+	logger.Infof("Total rows: %d, Processed rows: %d", totalRows, processedRows)
 }
 
-func processChunk(chunks chan []string, wg *sync.WaitGroup) {
+func processChunk(chunks chan []string, wg *sync.WaitGroup, logger *logrus.Logger) {
 	defer wg.Done()
 
 	var devices []models.Device
 	batchSize := 500
 
 	for record := range chunks {
-		price, _ := strconv.ParseFloat(record[10], 64)
+		price, err := strconv.ParseFloat(record[10], 64)
+		if err != nil {
+			logger.Printf("Invalid price in record: %v", record)
+			continue
+		}
+
 		device := models.Device{
 			ID:           parseInt(record[0]),
 			DeviceName:   record[1],
@@ -82,24 +99,30 @@ func processChunk(chunks chan []string, wg *sync.WaitGroup) {
 		devices = append(devices, device)
 
 		if len(devices) >= batchSize {
-			insertBatch(devices)
+			insertBatch(devices, logger)
 			devices = devices[:0]
 		}
 	}
 
 	if len(devices) > 0 {
-		insertBatch(devices)
+		insertBatch(devices, logger)
 	}
 }
 
-func insertBatch(devices []models.Device) {
+func insertBatch(devices []models.Device, logger *logrus.Logger) {
 	err := database.DB.Create(&devices).Error
 	if err != nil {
-		log.Printf("Failed to insert batch: %v", err)
+		logger.Printf("Failed to insert batch: %v", err)
+		return
 	}
+	atomic.AddInt64(&processedRows, int64(len(devices)))
 }
 
 func parseInt(s string) int {
-	v, _ := strconv.Atoi(s)
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		fmt.Errorf("Invalid integer value: %s", s)
+		return 0
+	}
 	return v
 }

@@ -35,6 +35,8 @@ services:
     container_name: go-app
     ports:
       - "8080:8080"
+    volumes:
+      - ./logs:/app/app/logs
     depends_on:
       db:
         condition: service_healthy
@@ -58,3 +60,4 @@ networks:
 
 volumes:
   postgres-data:  # Define the volume to persist data
+  app-logs:
